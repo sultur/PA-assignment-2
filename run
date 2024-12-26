@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+
+if [ -z ${JUDGE0_VERSION+x} ]; then
+    ./scheduler
+else
+    LD_LIBRARY_PATH=/usr/local/gcc-9.2.0/bin/lib64 ./scheduler
+fi

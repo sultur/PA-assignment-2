@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+
+if [ -z ${JUDGE0_VERSION+x} ]; then
+    cmake .
+else
+    cmake -DCMAKE_CXX_COMPILER=/usr/local/gcc-9.2.0/bin/g++ -DCMAKE_C_COMPILER=/usr/local/gcc-9.2.0/bin/gcc .
+fi
+make
+chmod +x scheduler
