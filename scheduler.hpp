@@ -4,12 +4,10 @@
 
 #include "batch_instance.hpp"
 #include <algorithm>
-#include <cstdint>
 #include <deque>
 #include <optional>
 
 using namespace std;
-typedef uint32_t u32;
 
 class Scheduler {
 public:
@@ -30,20 +28,10 @@ public:
     if (currently_running.size() == 0) {
       return {};
     }
-    // Next lines are a bit ugly, but they simply find the job with
-    // the earliest end time (using the actual job runtimes)
-    auto it =
-        min_element(currently_running.begin(), currently_running.end(),
-                    [&](const Job &j1, const Job &j2) {
-                      return this->job_ends_at(j1) < this->job_ends_at(j2);
-                    });
-    return *it;
+    // Finds a currently running job with the earliest actual end time
+    return *min_element(currently_running.begin(), currently_running.end(),
+                        Job::compare_actual_endtimes);
   }
-
-  /*
-   * Returns actual end time of job (assumed to be already started).
-   */
-  u32 job_ends_at(Job job) { return start_times[job.id - 1] + job.act_runtime; }
 
   /*
    * Run when a job finishes. Removes job from currently running and
@@ -60,7 +48,7 @@ public:
     curr_m += job.machines;
 
     // Run backfill algorithm
-    backfill(job_ends_at(job));
+    backfill(job.actual_end());
   }
 
   /*
@@ -75,11 +63,16 @@ public:
     backfill(job.release_time);
   }
 
-  bool has_jobs_in_queue() { return job_queue.size() > 0; }
+  /*
+   * Return true if there are still jobs either running or queued.
+   */
+  bool still_running() {
+    return job_queue.size() > 0 || currently_running.size() > 0;
+  }
 
 private:
   /*
-   * Main algorithm. Currently a simple FIFO queue.
+   * Main backfilling algorithm. Variant on the EASY algorithm.
    */
   void backfill(u32 curr_timestamp) {
     // Repeatedly check if the first job in the queue can be started,
@@ -88,6 +81,9 @@ private:
       start_job(job_queue[0], curr_timestamp);
       job_queue.pop_front();
     }
+    // Sort currently_running by the expected runtime
+    sort(currently_running.begin(), currently_running.end(),
+         Job::compare_expected_endtimes);
   }
 
   /*
@@ -95,10 +91,11 @@ private:
    * machines.
    */
   void start_job(Job job, u32 timestamp) {
-    // Add to currently running
-    currently_running.push_back(job);
     // Set start time
     start_times[job.id - 1] = timestamp;
+    job.set_start_time(timestamp);
+    // Add to currently running
+    currently_running.push_back(job);
     // Allocate resources
     curr_m -= job.machines;
   }

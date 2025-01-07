@@ -22,7 +22,7 @@ int main(int argc, char **argv) {
     // either a job finishes or the next job gets released
 
     if (next_job_to_finish.has_value() &&
-        scheduler.job_ends_at(next_job_to_finish.value()) <=
+        next_job_to_finish.value().actual_end() <=
             next_job_to_release.release_time) {
 
       // Some currently running job finishes before the next job gets released
@@ -35,9 +35,8 @@ int main(int argc, char **argv) {
       ++next_job_idx;
     }
   }
-  // Keep running until job queue is finished, meaning all jobs have
-  // received a start time
-  while (scheduler.has_jobs_in_queue()) {
+  // Keep running until all jobs are finished
+  while (scheduler.still_running()) {
     next_job_to_finish = scheduler.next_job_to_finish();
     scheduler.finish_job(next_job_to_finish.value());
   }
@@ -53,8 +52,3 @@ int main(int argc, char **argv) {
   // Flush stdout (don't use endl in loop, it's slower)
   std::cout << std::endl;
 }
-
-void queue_job(Job job, vector<Job> &currently_running,
-               vector<u32> &start_times) {}
-void finish_job(Job job, vector<Job> &currently_running,
-                vector<u32> &start_times) {}

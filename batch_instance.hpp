@@ -5,11 +5,13 @@
 #define INSTANCE_H
 
 #include "util.hpp"
+#include <cstdint>
 #include <iostream>
-#include <optional>
+#include <stdexcept>
 #include <vector>
 
 using namespace std;
+typedef uint32_t u32;
 
 class Job {
 public:
@@ -24,7 +26,48 @@ public:
       : id(_id), release_time(_release_time), req_runtime(_req_runtime),
         act_runtime(_act_runtime), machines(_machines) {}
 
+  // Comparison functions
   bool operator==(Job other) { return id == other.id; }
+
+  static bool compare_actual_endtimes(const Job &j1, const Job &j2) {
+    return j1.actual_end() < j2.actual_end();
+  }
+  static bool compare_expected_endtimes(const Job &j1, const Job &j2) {
+    return j1.expected_end() < j2.expected_end();
+  }
+
+  /*
+   * Set start time of job.
+   */
+  void set_start_time(u32 timestamp) {
+    has_started = true;
+    start_time = timestamp;
+  }
+
+  /*
+   * Return the expected end time of the job.
+   */
+  u32 expected_end() const {
+    if (!has_started) {
+      throw logic_error("Job hasn't been started yet.");
+    }
+    return start_time + (u32)req_runtime;
+  }
+
+  /*
+   * Return the actual end time of the job (the scheduler isn't
+   * allowed to use this for the algorithm).
+   */
+  u32 actual_end() const {
+    if (!has_started) {
+      throw logic_error("Job hasn't been started yet.");
+    }
+    return start_time + (u32)act_runtime;
+  }
+
+private:
+  bool has_started = false;
+  u32 start_time = 0;
 };
 
 class Instance {
