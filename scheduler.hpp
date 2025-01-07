@@ -47,6 +47,8 @@ public:
     // Free up the machines that the job required
     curr_m += job.machines;
 
+    // TODO: Check if profile can be compressed instead of calling backfill
+
     // Run backfill algorithm
     backfill(job.actual_end());
   }
@@ -72,21 +74,6 @@ public:
 
 private:
   /*
-   * Main backfilling algorithm. Variant on the EASY algorithm.
-   */
-  void backfill(u32 curr_timestamp) {
-    // Repeatedly check if the first job in the queue can be started,
-    // start it if so
-    while (job_queue.size() > 0 && job_queue[0].machines <= curr_m) {
-      start_job(job_queue[0], curr_timestamp);
-      job_queue.pop_front();
-    }
-    // Sort currently_running by the expected runtime
-    sort(currently_running.begin(), currently_running.end(),
-         Job::compare_expected_endtimes);
-  }
-
-  /*
    * Start a job. Sets the start time of the job and subtracts the needed
    * machines.
    */
@@ -98,6 +85,76 @@ private:
     currently_running.push_back(job);
     // Allocate resources
     curr_m -= job.machines;
+  }
+
+  /*
+   * Main backfilling algorithm.
+   */
+  void backfill(u32 curr_timestamp) {
+    u32 old_size = 0;
+    // While the job queue is non-empty and alg_EASY modifies it,
+    // run alg_EASY.
+    while (job_queue.size() != old_size) {
+      old_size = job_queue.size();
+      alg_EASY(curr_timestamp);
+    }
+  }
+
+  /* EASY backfilling algorithm */
+  void alg_EASY(u32 curr_timestamp) {
+    if (job_queue.size() == 0)
+      return;
+
+    if (job_queue.front().machines <= curr_m) { // First job in queue can run
+      start_job(job_queue.front(), curr_timestamp);
+      job_queue.pop_front();
+      return;
+    }
+
+    if (job_queue.size() == 1) { // Can't backfill with only one job in queue
+      return;
+    }
+
+    // Sort currently_running by the expected runtime
+    sort(currently_running.begin(), currently_running.end(),
+         Job::compare_expected_endtimes);
+
+    Job job = job_queue.front();
+    // Find first point where sufficient machines are available
+    // for first job in queue
+    u32 nodes = curr_m;
+    u32 shadow_time = curr_timestamp;
+    for (const auto &cr : currently_running) {
+      nodes += cr.machines;
+      shadow_time = cr.expected_end();
+      if (nodes >= job.machines) {
+        break;
+      }
+    }
+    // How many extra machines will be available when the job can start
+    int extra_nodes = nodes - job.machines;
+    // Expected time when enough machines free up to start the job
+    shadow_time -= curr_timestamp;
+
+    // cerr << "Backfilling for job " << job.id << " at " << curr_timestamp
+    //      << " with curr_m: " << curr_m << " extra-nodes: " << extra_nodes
+    //      << " shadow-time: " << shadow_time << endl;
+    // Find a backfill job (starting at index 1)
+    for (auto it = job_queue.begin() + 1; it != job_queue.end(); ++it) {
+      Job other = *it;
+
+      if (other.machines <= curr_m) {
+        // We would be able to start the other job
+        if ((other.req_runtime <= shadow_time) ||
+            (other.machines <= extra_nodes)) {
+          // The other job finishes before the shadow time, or
+          // requires few enough machines to not delay the first job
+          start_job(other, curr_timestamp);
+          job_queue.erase(it);
+          return;
+        }
+      }
+    }
   }
 };
 

@@ -27,6 +27,7 @@ public:
         act_runtime(_act_runtime), machines(_machines) {}
 
   // Comparison functions
+
   bool operator==(Job other) { return id == other.id; }
 
   static bool compare_actual_endtimes(const Job &j1, const Job &j2) {
