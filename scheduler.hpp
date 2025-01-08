@@ -7,7 +7,6 @@
 #include <deque>
 #include <functional>
 #include <optional>
-#include <unordered_map>
 
 using namespace std;
 
@@ -109,15 +108,49 @@ private:
    */
   void compress_profile(u32 curr_timestamp) {
 
-    vector<Job> upcoming_jobs(job_queue.begin(), job_queue.end());
+    deque<Job> upcoming_jobs(job_queue);
     sort(upcoming_jobs.begin(), upcoming_jobs.end(), Job::compare_start_times);
 
     // TODO: Preserve the job queue order?
     job_queue.clear();
+    // Sort currently_running by the expected runtime
+    // sort(currently_running.begin(), currently_running.end(),
+    //      Job::compare_expected_endtimes);
 
-    for (auto job : upcoming_jobs) {
-      job_queue.push_back(job);
-      backfill(curr_timestamp);
+    vector<pair<u32, int>> job_ends;
+    for (auto job : currently_running) {
+      job_ends.push_back(pair(job.expected_end(), job.machines));
+      push_heap(job_ends.begin(), job_ends.end(), greater<pair<u32, int>>());
+    }
+    // Add current time
+    job_ends.push_back(pair(curr_timestamp, 0));
+    push_heap(job_ends.begin(), job_ends.end(), greater<pair<u32, int>>());
+
+    Job curr_job = upcoming_jobs.front();
+    u32 timestamp = curr_timestamp;
+    int avail_m = curr_m;
+    while (upcoming_jobs.size() > 0) {
+      pop_heap(job_ends.begin(), job_ends.end(),
+               greater<pair<u32, int>>()); // Move next event to back
+      pair<u32, int> ev = job_ends.back();
+      job_ends.pop_back();
+
+      avail_m += ev.second;
+      if (avail_m >= curr_job.machines) {
+        curr_job.set_start_time(timestamp);
+        if (timestamp == curr_timestamp) {
+          start_job(curr_job, curr_timestamp);
+        } else {
+          job_queue.push_back(curr_job);
+        }
+        avail_m -= curr_job.machines;
+
+        job_ends.push_back(pair(curr_job.expected_end(), curr_job.machines));
+        push_heap(job_ends.begin(), job_ends.end(), greater<pair<u32, int>>());
+
+        upcoming_jobs.pop_front();
+        curr_job = upcoming_jobs.front();
+      }
     }
   }
 
