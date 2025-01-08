@@ -80,8 +80,10 @@ private:
     // Set start time
     start_times[job.id - 1] = timestamp;
     job.set_start_time(timestamp);
-    // Add to currently running
+    // Add to currently running and keep sorted
     currently_running.push_back(job);
+    sort(currently_running.begin(), currently_running.end(),
+         Job::compare_expected_endtimes);
     // Allocate resources
     curr_m -= job.machines;
   }
@@ -100,6 +102,9 @@ private:
     if (anchor == curr_timestamp) {
       start_job(job, anchor);
       job_queue.pop_back();
+    } else {
+      // Otherwise sort job queue by start times
+      sort(job_queue.begin(), job_queue.end(), Job::compare_start_times);
     }
   }
 
@@ -108,49 +113,13 @@ private:
    */
   void compress_profile(u32 curr_timestamp) {
 
-    deque<Job> upcoming_jobs(job_queue);
-    sort(upcoming_jobs.begin(), upcoming_jobs.end(), Job::compare_start_times);
-
-    // TODO: Preserve the job queue order?
-    job_queue.clear();
-    // Sort currently_running by the expected runtime
-    // sort(currently_running.begin(), currently_running.end(),
-    //      Job::compare_expected_endtimes);
-
-    vector<pair<u32, int>> job_ends;
-    for (auto job : currently_running) {
-      job_ends.push_back(pair(job.expected_end(), job.machines));
-      push_heap(job_ends.begin(), job_ends.end(), greater<pair<u32, int>>());
+    if (job_queue.size() == 0) {
+      return;
     }
-    // Add current time
-    job_ends.push_back(pair(curr_timestamp, 0));
-    push_heap(job_ends.begin(), job_ends.end(), greater<pair<u32, int>>());
-
-    Job curr_job = upcoming_jobs.front();
-    u32 timestamp = curr_timestamp;
-    int avail_m = curr_m;
-    while (upcoming_jobs.size() > 0) {
-      pop_heap(job_ends.begin(), job_ends.end(),
-               greater<pair<u32, int>>()); // Move next event to back
-      pair<u32, int> ev = job_ends.back();
-      job_ends.pop_back();
-
-      avail_m += ev.second;
-      if (avail_m >= curr_job.machines) {
-        curr_job.set_start_time(timestamp);
-        if (timestamp == curr_timestamp) {
-          start_job(curr_job, curr_timestamp);
-        } else {
-          job_queue.push_back(curr_job);
-        }
-        avail_m -= curr_job.machines;
-
-        job_ends.push_back(pair(curr_job.expected_end(), curr_job.machines));
-        push_heap(job_ends.begin(), job_ends.end(), greater<pair<u32, int>>());
-
-        upcoming_jobs.pop_front();
-        curr_job = upcoming_jobs.front();
-      }
+    if (job_queue.front().machines <= curr_m) {
+      start_job(job_queue.front(), curr_timestamp);
+      job_queue.pop_front();
+      return;
     }
   }
 
@@ -213,7 +182,7 @@ private:
     // Currently running jobs will end and release machines
     for (auto j : currently_running) {
       events.push_back(pair(j.expected_end(), j.machines));
-      push_heap(events.begin(), events.end(), greater<pair<u32, int>>());
+      // push_heap(events.begin(), events.end(), greater<pair<u32, int>>());
     }
 
     // Queued jobs are planned to start at some time, requiring
@@ -221,11 +190,12 @@ private:
     for (auto it = job_queue.begin(); it != job_queue.end() - 1; ++it) {
       events.push_back(
           pair(it->start_time, -it->machines)); // Machines is negative here
-      push_heap(events.begin(), events.end(), greater<pair<u32, int>>());
+      // push_heap(events.begin(), events.end(), greater<pair<u32, int>>());
 
       events.push_back(pair(it->expected_end(), it->machines));
-      push_heap(events.begin(), events.end(), greater<pair<u32, int>>());
+      // push_heap(events.begin(), events.end(), greater<pair<u32, int>>());
     }
+    sort(events.begin(), events.end());
 
     return events;
   }
@@ -243,8 +213,8 @@ private:
     // We now have a min-heap of upcoming events, containing a
     // timestamp and the number of machines that get used/freed
     while (events.size() > 0) {
-      pop_heap(events.begin(), events.end(),
-               greater<pair<u32, int>>()); // Move next event to back
+      // pop_heap(events.begin(), events.end(),
+      // greater<pair<u32, int>>()); // Move next event to back
       pair<u32, int> ev = events.back();
       events.pop_back();
 
