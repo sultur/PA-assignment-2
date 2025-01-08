@@ -7,7 +7,6 @@
 #include "util.hpp"
 #include <cstdint>
 #include <iostream>
-#include <stdexcept>
 #include <vector>
 
 using namespace std;
@@ -20,6 +19,8 @@ public:
   int req_runtime;
   int act_runtime;
   int machines;
+
+  u32 start_time = 0;
 
   Job(int _id, int _release_time, int _req_runtime, int _act_runtime,
       int _machines)
@@ -40,35 +41,18 @@ public:
   /*
    * Set start time of job.
    */
-  void set_start_time(u32 timestamp) {
-    has_started = true;
-    start_time = timestamp;
-  }
+  void set_start_time(u32 timestamp) { start_time = timestamp; }
 
   /*
    * Return the expected end time of the job.
    */
-  u32 expected_end() const {
-    if (!has_started) {
-      throw logic_error("Job hasn't been started yet.");
-    }
-    return start_time + (u32)req_runtime;
-  }
+  u32 expected_end() const { return start_time + (u32)req_runtime; }
 
   /*
    * Return the actual end time of the job (the scheduler isn't
    * allowed to use this for the algorithm).
    */
-  u32 actual_end() const {
-    if (!has_started) {
-      throw logic_error("Job hasn't been started yet.");
-    }
-    return start_time + (u32)act_runtime;
-  }
-
-private:
-  bool has_started = false;
-  u32 start_time = 0;
+  u32 actual_end() const { return start_time + (u32)act_runtime; }
 };
 
 class Instance {

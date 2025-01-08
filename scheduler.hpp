@@ -5,7 +5,9 @@
 #include "batch_instance.hpp"
 #include <algorithm>
 #include <deque>
+#include <functional>
 #include <optional>
+#include <unordered_map>
 
 using namespace std;
 
@@ -47,10 +49,8 @@ public:
     // Free up the machines that the job required
     curr_m += job.machines;
 
-    // TODO: Check if profile can be compressed instead of calling backfill
-
-    // Run backfill algorithm
-    backfill(job.actual_end());
+    // Compress profile
+    compress_profile(job.actual_end());
   }
 
   /*
@@ -91,12 +91,32 @@ private:
    * Main backfilling algorithm.
    */
   void backfill(u32 curr_timestamp) {
-    u32 old_size = 0;
-    // While the job queue is non-empty and alg_EASY modifies it,
-    // run alg_EASY.
-    while (job_queue.size() != old_size) {
-      old_size = job_queue.size();
-      alg_EASY(curr_timestamp);
+    Job job = job_queue.back();
+    // Find anchor point for job
+    u32 anchor = find_anchor(job, curr_timestamp);
+    // Anchor found, update profile by setting jobs start time
+    job.set_start_time(anchor);
+
+    // Start job immediately if anchor is current timestamp
+    if (anchor == curr_timestamp) {
+      start_job(job, anchor);
+      job_queue.pop_back();
+    }
+  }
+
+  /*
+   * A job finished earlier than expected, reschedule queued jobs.
+   */
+  void compress_profile(u32 curr_timestamp) {
+
+    auto events = upcoming_events();
+
+    unordered_multimap<u32, int> start_time_map; // Map start time to IDs
+    for (auto job : job_queue) {
+      start_time_map.insert(pair(job.start_time, job.id));
+    }
+    // Go through events and see if any jobs can be moved to start earlier
+    while (events.size() > 0) {
     }
   }
 
@@ -136,9 +156,6 @@ private:
     // Expected time when enough machines free up to start the job
     shadow_time -= curr_timestamp;
 
-    // cerr << "Backfilling for job " << job.id << " at " << curr_timestamp
-    //      << " with curr_m: " << curr_m << " extra-nodes: " << extra_nodes
-    //      << " shadow-time: " << shadow_time << endl;
     // Find a backfill job (starting at index 1)
     for (auto it = job_queue.begin() + 1; it != job_queue.end(); ++it) {
       Job other = *it;
@@ -155,6 +172,62 @@ private:
         }
       }
     }
+  }
+
+  vector<pair<u32, int>> upcoming_events() {
+    vector<pair<u32, int>> events;
+    // Currently running jobs will end and release machines
+    for (auto j : currently_running) {
+      events.push_back(pair(j.expected_end(), j.machines));
+      push_heap(events.begin(), events.end(), greater<pair<u32, int>>());
+    }
+    // Queued jobs are planned to start at some time, requiring
+    // machines, and end at some time, releasing machines
+    for (auto it = job_queue.begin(); it != job_queue.end() - 1; ++it) {
+      events.push_back(
+          pair(it->start_time, -it->machines)); // Machines is negative here
+      push_heap(events.begin(), events.end(), greater<pair<u32, int>>());
+
+      events.push_back(pair(it->expected_end(), it->machines));
+      push_heap(events.begin(), events.end(), greater<pair<u32, int>>());
+    }
+    return events;
+  }
+
+  /*
+   * Find anchor for job, searching from curr timestamp.
+   */
+  u32 find_anchor(Job job, u32 curr_timestamp) {
+    // Find anchor point for job
+    u32 anchor = curr_timestamp;
+    int avail_m = curr_m;
+
+    auto events = upcoming_events();
+
+    // We now have a min-heap of upcoming events, containing a
+    // timestamp and the number of machines that get used/freed
+    while (events.size() > 0) {
+      pop_heap(events.begin(), events.end(),
+               greater<pair<u32, int>>()); // Move next event to back
+      pair<u32, int> ev = events.back();
+      events.pop_back();
+
+      if (ev.first >= anchor + job.req_runtime && avail_m >= job.machines) {
+        // Event happens later than job's requested runtime and the
+        // currently available machines are enough, anchor is valid
+        break;
+      }
+      // Update available machines from event
+      avail_m += ev.second;
+      if (avail_m < job.machines ||
+          (avail_m >= job.machines && avail_m - ev.second < job.machines)) {
+        // Either there aren't enough machines available, or the
+        // current event timestamp made enough machines free to be a
+        // possible anchor point
+        anchor = ev.first;
+      }
+    }
+    return anchor;
   }
 };
 
