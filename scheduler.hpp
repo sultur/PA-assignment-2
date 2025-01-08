@@ -5,9 +5,7 @@
 #include "batch_instance.hpp"
 #include <algorithm>
 #include <deque>
-#include <functional>
 #include <optional>
-#include <unordered_map>
 
 using namespace std;
 
@@ -83,6 +81,8 @@ private:
     job.set_start_time(timestamp);
     // Add to currently running
     currently_running.push_back(job);
+    sort(currently_running.begin(), currently_running.end(),
+         Job::compare_expected_endtimes);
     // Allocate resources
     curr_m -= job.machines;
   }
@@ -102,12 +102,13 @@ private:
       start_job(job, anchor);
       job_queue.pop_back();
     } else {
+      // Otherwise sort the job queue
       sort(job_queue.begin(), job_queue.end(), Job::compare_start_times);
     }
   }
 
   /*
-   * A job finished earlier than expected, reschedule queued jobs.
+   * A job finished, possibly earlier than expected, reschedule queued jobs.
    */
   void compress_profile(u32 curr_timestamp) {
 
@@ -121,13 +122,14 @@ private:
     }
 
     deque<Job> upcoming_jobs;
-    swap(job_queue, upcoming_jobs);
+    swap(job_queue, upcoming_jobs); // backfill uses job_queue, clear
+                                    // it and fill incrementally
 
     while (upcoming_jobs.size() > 0) {
       Job job = upcoming_jobs.front();
       job_queue.push_back(job);
       upcoming_jobs.pop_front();
-      if (curr_m > 0) {
+      if (curr_m > job.machines) {
         backfill(curr_timestamp);
       }
     }
@@ -192,7 +194,6 @@ private:
     // Currently running jobs will end and release machines
     for (auto j : currently_running) {
       events.push_back(pair(j.expected_end(), j.machines));
-      // push_heap(events.begin(), events.end(), greater<pair<u32, int>>());
     }
 
     // Queued jobs are planned to start at some time, requiring
@@ -200,11 +201,10 @@ private:
     for (auto it = job_queue.begin(); it != job_queue.end() - 1; ++it) {
       events.push_back(
           pair(it->start_time, -it->machines)); // Machines is negative here
-      // push_heap(events.begin(), events.end(), greater<pair<u32, int>>());
 
       events.push_back(pair(it->expected_end(), it->machines));
-      // push_heap(events.begin(), events.end(), greater<pair<u32, int>>());
     }
+    // Sort events with earliest last
     sort(events.begin(), events.end());
 
     return events;
@@ -220,11 +220,9 @@ private:
 
     auto events = upcoming_events();
 
-    // We now have a min-heap of upcoming events, containing a
+    // We now have a list of upcoming events, containing a
     // timestamp and the number of machines that get used/freed
     while (events.size() > 0) {
-      // pop_heap(events.begin(), events.end(),
-      //          greater<pair<u32, int>>()); // Move next event to back
       pair<u32, int> ev = events.back();
       events.pop_back();
 
