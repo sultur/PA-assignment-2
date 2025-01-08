@@ -101,6 +101,8 @@ private:
     if (anchor == curr_timestamp) {
       start_job(job, anchor);
       job_queue.pop_back();
+    } else {
+      sort(job_queue.begin(), job_queue.end(), Job::compare_start_times);
     }
   }
 
@@ -109,15 +111,25 @@ private:
    */
   void compress_profile(u32 curr_timestamp) {
 
-    vector<Job> upcoming_jobs(job_queue.begin(), job_queue.end());
-    sort(upcoming_jobs.begin(), upcoming_jobs.end(), Job::compare_start_times);
+    if (job_queue.size() == 0) {
+      return;
+    }
+    if (job_queue.front().machines <= curr_m) {
+      start_job(job_queue.front(), curr_timestamp);
+      job_queue.pop_front();
+      return;
+    }
 
-    // TODO: Preserve the job queue order?
-    job_queue.clear();
+    deque<Job> upcoming_jobs;
+    swap(job_queue, upcoming_jobs);
 
-    for (auto job : upcoming_jobs) {
+    while (upcoming_jobs.size() > 0) {
+      Job job = upcoming_jobs.front();
       job_queue.push_back(job);
-      backfill(curr_timestamp);
+      upcoming_jobs.pop_front();
+      if (curr_m > 0) {
+        backfill(curr_timestamp);
+      }
     }
   }
 
@@ -180,7 +192,7 @@ private:
     // Currently running jobs will end and release machines
     for (auto j : currently_running) {
       events.push_back(pair(j.expected_end(), j.machines));
-      push_heap(events.begin(), events.end(), greater<pair<u32, int>>());
+      // push_heap(events.begin(), events.end(), greater<pair<u32, int>>());
     }
 
     // Queued jobs are planned to start at some time, requiring
@@ -188,11 +200,12 @@ private:
     for (auto it = job_queue.begin(); it != job_queue.end() - 1; ++it) {
       events.push_back(
           pair(it->start_time, -it->machines)); // Machines is negative here
-      push_heap(events.begin(), events.end(), greater<pair<u32, int>>());
+      // push_heap(events.begin(), events.end(), greater<pair<u32, int>>());
 
       events.push_back(pair(it->expected_end(), it->machines));
-      push_heap(events.begin(), events.end(), greater<pair<u32, int>>());
+      // push_heap(events.begin(), events.end(), greater<pair<u32, int>>());
     }
+    sort(events.begin(), events.end());
 
     return events;
   }
@@ -210,8 +223,8 @@ private:
     // We now have a min-heap of upcoming events, containing a
     // timestamp and the number of machines that get used/freed
     while (events.size() > 0) {
-      pop_heap(events.begin(), events.end(),
-               greater<pair<u32, int>>()); // Move next event to back
+      // pop_heap(events.begin(), events.end(),
+      //          greater<pair<u32, int>>()); // Move next event to back
       pair<u32, int> ev = events.back();
       events.pop_back();
 
