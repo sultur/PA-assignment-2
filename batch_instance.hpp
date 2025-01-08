@@ -31,6 +31,9 @@ public:
 
   bool operator==(Job other) { return id == other.id; }
 
+  static bool compare_start_times(const Job &j1, const Job &j2) {
+    return j1.start_time < j2.start_time;
+  }
   static bool compare_actual_endtimes(const Job &j1, const Job &j2) {
     return j1.actual_end() < j2.actual_end();
   }

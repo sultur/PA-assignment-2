@@ -109,14 +109,15 @@ private:
    */
   void compress_profile(u32 curr_timestamp) {
 
-    auto events = upcoming_events();
+    vector<Job> upcoming_jobs(job_queue.begin(), job_queue.end());
+    sort(upcoming_jobs.begin(), upcoming_jobs.end(), Job::compare_start_times);
 
-    unordered_multimap<u32, int> start_time_map; // Map start time to IDs
-    for (auto job : job_queue) {
-      start_time_map.insert(pair(job.start_time, job.id));
-    }
-    // Go through events and see if any jobs can be moved to start earlier
-    while (events.size() > 0) {
+    // TODO: Preserve the job queue order?
+    job_queue.clear();
+
+    for (auto job : upcoming_jobs) {
+      job_queue.push_back(job);
+      backfill(curr_timestamp);
     }
   }
 
@@ -181,6 +182,7 @@ private:
       events.push_back(pair(j.expected_end(), j.machines));
       push_heap(events.begin(), events.end(), greater<pair<u32, int>>());
     }
+
     // Queued jobs are planned to start at some time, requiring
     // machines, and end at some time, releasing machines
     for (auto it = job_queue.begin(); it != job_queue.end() - 1; ++it) {
@@ -191,6 +193,7 @@ private:
       events.push_back(pair(it->expected_end(), it->machines));
       push_heap(events.begin(), events.end(), greater<pair<u32, int>>());
     }
+
     return events;
   }
 
