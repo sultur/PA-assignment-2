@@ -125,70 +125,22 @@ private:
     swap(job_queue, upcoming_jobs); // backfill uses job_queue, clear
                                     // it and fill incrementally
 
+    // Re-queue the jobs in the job queue, backfilling for some jobs
     while (upcoming_jobs.size() > 0) {
       Job job = upcoming_jobs.front();
       job_queue.push_back(job);
       upcoming_jobs.pop_front();
-      if (curr_m > job.machines) {
+      if (job.machines <= curr_m) {
         backfill(curr_timestamp);
       }
     }
   }
 
-  /* EASY backfilling algorithm */
-  void alg_EASY(u32 curr_timestamp) {
-    if (job_queue.size() == 0)
-      return;
-
-    if (job_queue.front().machines <= curr_m) { // First job in queue can run
-      start_job(job_queue.front(), curr_timestamp);
-      job_queue.pop_front();
-      return;
-    }
-
-    if (job_queue.size() == 1) { // Can't backfill with only one job in queue
-      return;
-    }
-
-    // Sort currently_running by the expected runtime
-    sort(currently_running.begin(), currently_running.end(),
-         Job::compare_expected_endtimes);
-
-    Job job = job_queue.front();
-    // Find first point where sufficient machines are available
-    // for first job in queue
-    u32 nodes = curr_m;
-    u32 shadow_time = curr_timestamp;
-    for (const auto &cr : currently_running) {
-      nodes += cr.machines;
-      shadow_time = cr.expected_end();
-      if (nodes >= job.machines) {
-        break;
-      }
-    }
-    // How many extra machines will be available when the job can start
-    int extra_nodes = nodes - job.machines;
-    // Expected time when enough machines free up to start the job
-    shadow_time -= curr_timestamp;
-
-    // Find a backfill job (starting at index 1)
-    for (auto it = job_queue.begin() + 1; it != job_queue.end(); ++it) {
-      Job other = *it;
-
-      if (other.machines <= curr_m) {
-        // We would be able to start the other job
-        if ((other.req_runtime <= shadow_time) ||
-            (other.machines <= extra_nodes)) {
-          // The other job finishes before the shadow time, or
-          // requires few enough machines to not delay the first job
-          start_job(other, curr_timestamp);
-          job_queue.erase(it);
-          return;
-        }
-      }
-    }
-  }
-
+  /*
+   * Return vector containing pairs of timestamps and how many
+   * machines get reserved/freed. Sorted so the earliest timestamps
+   * are last.
+   */
   vector<pair<u32, int>> upcoming_events() {
     vector<pair<u32, int>> events;
     // Currently running jobs will end and release machines
@@ -211,7 +163,7 @@ private:
   }
 
   /*
-   * Find anchor for job, searching from curr timestamp.
+   * Find anchor point for job, searching from curr timestamp.
    */
   u32 find_anchor(Job job, u32 curr_timestamp) {
     // Find anchor point for job
