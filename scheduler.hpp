@@ -126,10 +126,8 @@ private:
                                     // it and fill incrementally
 
     // Re-queue the jobs in the job queue, backfilling for some jobs
-    while (upcoming_jobs.size() > 0) {
-      Job job = upcoming_jobs.front();
+    for (auto job : upcoming_jobs) {
       job_queue.push_back(job);
-      upcoming_jobs.pop_front();
       if (job.machines <= curr_m) {
         backfill(curr_timestamp);
       }
